@@ -221,30 +221,31 @@ let
     ```
   */
   wrapPackage =
-    { pkgs
-    , package
-    , runtimeInputs ? [ ]
-    , env ? { }
-    , flags ? { }
-    , flagSeparator ? " "
-    , # " " for "--flag value" or "=" for "--flag=value"
-      preHook ? ""
-    , passthru ? { }
-    , aliases ? [ ]
-    , wrapper ? (
-        { exePath
-        , flagsString
-        , envString
-        , preHook
-        , ...
+    {
+      pkgs,
+      package,
+      runtimeInputs ? [ ],
+      env ? { },
+      flags ? { },
+      flagSeparator ? " ",
+      # " " for "--flag value" or "=" for "--flag=value"
+      preHook ? "",
+      passthru ? { },
+      aliases ? [ ],
+      wrapper ? (
+        {
+          exePath,
+          flagsString,
+          envString,
+          preHook,
+          ...
         }:
-          ''
-            ${envString}
-            ${preHook}
-            exec ${exePath}${flagsString} "$@"
-          ''
-      )
-    ,
+        ''
+          ${envString}
+          ${preHook}
+          exec ${exePath}${flagsString} "$@"
+        ''
+      ),
     }:
     let
       # Extract binary name from the exe path
@@ -256,10 +257,9 @@ let
         if env == { } then
           ""
         else
-          lib.concatStringsSep "\n"
-            (
-              lib.mapAttrsToList (name: value: ''export ${name}="${toString value}"'') env
-            )
+          lib.concatStringsSep "\n" (
+            lib.mapAttrsToList (name: value: ''export ${name}="${toString value}"'') env
+          )
           + "\n";
 
       # Generate flag arguments with proper line breaks and indentation
@@ -269,12 +269,10 @@ let
         else
           " \\\n  "
           + lib.concatStringsSep " \\\n  " (
-            lib.mapAttrsToList
-              (
-                name: value:
-                  if value == { } then "${name}" else "${name}${flagSeparator}${lib.escapeShellArg (toString value)}"
-              )
-              flags
+            lib.mapAttrsToList (
+              name: value:
+              if value == { } then "${name}" else "${name}${flagSeparator}${lib.escapeShellArg (toString value)}"
+            ) flags
           );
 
       finalWrapper = wrapper {
@@ -290,15 +288,16 @@ let
 
       # Multi-output aware symlink join function
       multiOutputSymlinkJoin =
-        { name
-        , paths
-        , outputs ? [ "out" ]
-        , originalOutputs ? { }
-        , passthru ? { }
-        , meta ? { }
-        , aliases ? [ ]
-        , binName ? null
-        , ...
+        {
+          name,
+          paths,
+          outputs ? [ "out" ],
+          originalOutputs ? { },
+          passthru ? { },
+          meta ? { },
+          aliases ? [ ],
+          binName ? null,
+          ...
         }@args:
         pkgs.stdenv.mkDerivation (
           {
@@ -352,15 +351,12 @@ let
       # Get original package outputs for symlinking
       originalOutputs =
         if package ? outputs then
-          lib.listToAttrs
-            (
-              map
-                (output: {
-                  name = output;
-                  value = if package ? ${output} then package.${output} else null;
-                })
-                package.outputs
-            )
+          lib.listToAttrs (
+            map (output: {
+              name = output;
+              value = if package ? ${output} then package.${output} else null;
+            }) package.outputs
+          )
         else
           { };
 

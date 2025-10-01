@@ -1,6 +1,7 @@
-{ wlib
-, lib
-, ...
+{
+  wlib,
+  lib,
+  ...
 }:
 wlib.wrapModule (
   { config, wlib, ... }:
