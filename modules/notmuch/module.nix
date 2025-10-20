@@ -11,7 +11,7 @@ wlib.wrapModule (
   in
   {
     options = {
-      config = lib.mkOption {
+      settings = lib.mkOption {
         type = iniFmt.type;
         default = {
           database = {
@@ -22,7 +22,7 @@ wlib.wrapModule (
       };
       configFile = lib.mkOption {
         type = wlib.types.file config.pkgs;
-        default.path = toString (writeNotmuchConfig config.config);
+        default.path = toString (writeNotmuchConfig config.settings);
       };
     };
     config.package = config.pkgs.notmuch;

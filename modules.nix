@@ -1,5 +1,4 @@
 { wlib, lib }:
 lib.mapAttrs' (
-  name: _:
-  lib.nameValuePair (lib.removeSuffix ".nix" name) (import ./modules/${name} { inherit wlib lib; })
-) (builtins.readDir ./modules)
+  name: type: lib.nameValuePair name (import ./modules/${name}/module.nix { inherit wlib lib; })
+) (lib.filterAttrs (_: type: type == "directory") (builtins.readDir ./modules))

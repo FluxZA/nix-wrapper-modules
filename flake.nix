@@ -23,6 +23,8 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+
+          # Load checks from checks/ directory
           checkFiles = builtins.readDir ./checks;
           importCheck = name: {
             name = nixpkgs.lib.removeSuffix ".nix" name;
@@ -31,12 +33,34 @@
               self = self;
             };
           };
+          checksFromDir = builtins.listToAttrs (
+            map importCheck (
+              builtins.filter (name: nixpkgs.lib.hasSuffix ".nix" name) (builtins.attrNames checkFiles)
+            )
+          );
+
+          # Load checks from modules/**/check.nix
+          moduleFiles = builtins.readDir ./modules;
+          importModuleCheck =
+            name: type:
+            let
+              checkPath = ./modules + "/${name}/check.nix";
+            in
+            if type == "directory" && builtins.pathExists checkPath then
+              {
+                name = "module-${name}";
+                value = import checkPath {
+                  inherit pkgs;
+                  self = self;
+                };
+              }
+            else
+              null;
+          checksFromModules = builtins.listToAttrs (
+            nixpkgs.lib.filter (x: x != null) (nixpkgs.lib.mapAttrsToList importModuleCheck moduleFiles)
+          );
         in
-        builtins.listToAttrs (
-          map importCheck (
-            builtins.filter (name: nixpkgs.lib.hasSuffix ".nix" name) (builtins.attrNames checkFiles)
-          )
-        )
+        checksFromDir // checksFromModules
       );
     };
 }
