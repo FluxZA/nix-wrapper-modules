@@ -367,26 +367,22 @@
     '';
   };
   config.suffixVar =
-    lib.optionals (config.extraPackages != [ ]) [
-      {
-        name = "NIX_PATH_ADDITIONS";
-        data = lib.optionals (config.extraPackages != [ ]) [
-          "PATH"
-          ":"
-          "${lib.makeBinPath config.extraPackages}"
-        ];
-      }
-    ]
-    ++ lib.optionals (config.runtimeLibraries != [ ]) [
-      {
-        name = "NIX_LIB_ADDITIONS";
-        data = [
-          "LD_LIBRARY_PATH"
-          ":"
-          "${lib.makeLibraryPath config.extraPackages}"
-        ];
-      }
-    ];
+    lib.optional (config.extraPackages != [ ]) {
+      name = "NIX_PATH_ADDITIONS";
+      data = [
+        "PATH"
+        ":"
+        "${lib.makeBinPath config.extraPackages}"
+      ];
+    }
+    ++ lib.optional (config.runtimeLibraries != [ ]) {
+      name = "NIX_LIB_ADDITIONS";
+      data = [
+        "LD_LIBRARY_PATH"
+        ":"
+        "${lib.makeLibraryPath config.runtimeLibraries}"
+      ];
+    };
   config.drv.nativeBuildInputs =
     lib.mkIf (config.wrapperImplementation == "shell" || config.wrapperImplementation == "binary")
       [
