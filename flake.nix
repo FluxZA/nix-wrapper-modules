@@ -2,35 +2,44 @@
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs =
-    { self, nixpkgs }:
+    { self, ... }@inputs:
     let
-      forAllSystems = nixpkgs.lib.genAttrs nixpkgs.lib.platforms.all;
+      fpkgs =
+        system:
+        if inputs.pkgs.lib or null != null then
+          inputs.pkgs
+        else if inputs.nixpkgs.legacyPackages.${system} or null != null then
+          inputs.nixpkgs.legacyPackages.${system}
+        else if inputs ? nixpkgs then
+          import inputs.nixpkgs { inherit system; }
+        else
+          import <nixpkgs> { inherit system; };
+      lib =
+        inputs.pkgs.lib or inputs.nixpkgs.lib
+          or (if inputs ? nixpkgs then import "${inputs.nixpkgs}/lib" else import <nixpkgs/lib>);
+      forAllSystems = lib.genAttrs lib.platforms.all;
     in
     {
-      lib = import ./lib { inherit (nixpkgs) lib; };
-      wrapperModules = nixpkgs.lib.mapAttrs (
-        _: v: (self.lib.evalModule v).config
-      ) self.lib.wrapperModules;
-      formatter = forAllSystems (system: nixpkgs.legacyPackages.${system}.nixfmt-tree);
+      lib = import ./lib { inherit lib; };
+      wrapperModules = lib.mapAttrs (_: v: (self.lib.evalModule v).config) self.lib.wrapperModules;
+      formatter = forAllSystems (system: (fpkgs system).nixfmt-tree);
       templates = import ./templates;
       checks = forAllSystems (
         system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
+          pkgs = fpkgs system;
 
           # Load checks from checks/ directory
           checkFiles = builtins.readDir ./checks;
           importCheck = name: {
-            name = nixpkgs.lib.removeSuffix ".nix" name;
+            name = lib.removeSuffix ".nix" name;
             value = import (./checks + "/${name}") {
               inherit pkgs;
               self = self;
             };
           };
           checksFromDir = builtins.listToAttrs (
-            map importCheck (
-              builtins.filter (name: nixpkgs.lib.hasSuffix ".nix" name) (builtins.attrNames checkFiles)
-            )
+            map importCheck (builtins.filter (name: lib.hasSuffix ".nix" name) (builtins.attrNames checkFiles))
           );
 
           importModuleCheck = name: value: {
@@ -40,9 +49,7 @@
               self = self;
             };
           };
-          checksFromModules = builtins.listToAttrs (
-            nixpkgs.lib.mapAttrsToList importModuleCheck self.lib.checks
-          );
+          checksFromModules = builtins.listToAttrs (lib.mapAttrsToList importModuleCheck self.lib.checks);
         in
         checksFromDir // checksFromModules
       );
