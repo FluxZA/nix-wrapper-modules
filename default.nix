@@ -1,6 +1,6 @@
 {
-  pkgs ? import <nixpkgs> { },
-  nixpkgs ? null,
+  pkgs ? null,
+  nixpkgs ? <nixpkgs>,
   # NOTE: if a flake input is added, add it here too.
   # <NAME> ? import (builtins.fetchGit (let
   #     lock = (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes.<NAME>.locked;
@@ -30,9 +30,4 @@ let
     in
     res;
 in
-callFlake-less ./. (
-  {
-    nixpkgs = if nixpkgs != null then nixpkgs else (pkgs // { outPath = pkgs.path; });
-  }
-  // (builtins.removeAttrs args [ "pkgs" ])
-)
+callFlake-less ./. args
