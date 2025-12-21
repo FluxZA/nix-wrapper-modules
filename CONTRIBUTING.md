@@ -48,6 +48,9 @@ You may optionally set the `meta.description` option to provide a short descript
 
 ## Guidelines and Examples:
 
+When you provide an option to `enable` or `disable` something, you should call it `enable` regardless of its default value.
+This prevents people from needing to look it up to use it, and prevents contributors from having to think too hard about which to call it.
+
 When you provide a `wlib.types.file` option, you should name it the actual filename, especially if there are multiple, but `configFile` is also OK, especially if it is unambiguous.
 
 If you do name it `configFile` instead, you can fix the filename if necessary/desired by setting `default.path` explicitly, as shown in the example below.

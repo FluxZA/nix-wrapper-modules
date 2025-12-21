@@ -7,15 +7,37 @@
 }:
 let
   luaType = (pkgs.formats.lua { }).type;
-  disableableDagOf = wlib.types.dagOf // {
-    extraOptions.disabled = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = "Disable the value";
+  enabledDagOf = wlib.types.dagOf // {
+    modules = [
+      (
+        { config, ... }:
+        {
+          options.disabled = lib.mkOption {
+            internal = true;
+            type = lib.types.nullOr lib.types.bool;
+            default = null;
+          };
+          config.enable = lib.mkIf (config.disabled != null) (
+            lib.warn ''
+              wrapperModules.xplr:
+              `plugins.<name>.disabled` is deprecated. Use `plugins.<name>.enable` instead
+              `luaInit.<name>.disabled` is deprecated. Use `luaInit.<name>.enable` instead
+            '' (!config.disabled)
+          );
+        }
+      )
+    ];
+    extraOptions = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Enable the value";
+      };
+      disabled = true;
     };
   };
-  configDagOf = disableableDagOf // {
-    extraOptions = disableableDagOf.extraOptions // {
+  configDagOf = enabledDagOf // {
+    extraOptions = enabledDagOf.extraOptions // {
       plugin = lib.mkOption {
         type = lib.types.nullOr wlib.types.stringable;
         default = null;
@@ -42,7 +64,7 @@ let
     if builtins.isString config.luaInit then
       config.luaInit
     else
-      builtins.filter (v: !v.disabled) (
+      builtins.filter (v: v.enable) (
         wlib.dag.sortAndUnwrap {
           name = "xplr_init";
           dag = config.luaInit;
@@ -80,7 +102,7 @@ in
     '';
   };
   options.plugins = lib.mkOption {
-    type = disableableDagOf wlib.types.stringable;
+    type = enabledDagOf wlib.types.stringable;
     default = { };
     description = ''
       Will be symlinked into a directory added to the `LUA_PATH` and `LUA_CPATH`
@@ -236,7 +258,7 @@ in
           dal:
           wlib.dag.sortAndUnwrap {
             name = "xplr_plugins";
-            dag = builtins.filter (v: !v.disabled) (wlib.dag.dagToDal config.plugins) ++ dal;
+            dag = builtins.filter (v: v.enable) (wlib.dag.dagToDal config.plugins) ++ dal;
             mapIfOk = v: (mkLinkCommand v.name v.data);
           }
         )
