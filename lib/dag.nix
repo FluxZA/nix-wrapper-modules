@@ -136,14 +136,17 @@ let
                 }
                 .${n} or true
               then
-                if v.internal or false then false else true
+                if v.internal or false == true then false else true
               else
                 false
             ) subopts
           );
+          numfields = length extra-fields;
         in
-        if length extra-fields != 0 then
-          "(with extra field(s): `" + (concatStringsSep "`, `" extra-fields) + "`) "
+        if numfields > 1 then
+          "(with extra fields: `" + (concatStringsSep "`, `" extra-fields) + "`) "
+        else if numfields > 0 then
+          "(with extra field: `" + (concatStringsSep "`, `" extra-fields) + "`) "
         else
           "";
       extrasWithoutDefaults = attrNames (filterAttrs (n: v: !(v.isDefined or true)) subopts);
