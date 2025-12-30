@@ -207,26 +207,44 @@
     type = wlib.types.wrapperFlags 3;
     default = [ ];
     description = ''
+      ```nix
       [
         [ "ENV" "SEP" "FILE" ]
       ]
+      ```
 
       Prefix ENV with contents of FILE and SEP at build time.
 
-      Values may contain environment variable references using `$` to expand at runtime
+      Also accepts sets like the other options
+
+      ```nix
+      [
+        [ "ENV" "SEP" "FILE" ]
+        { data = [ "ENV" "SEP" "FILE" ]; esc-fn = lib.escapeShellArg; /* name, before, after */ }
+      ]
+      ```
     '';
   };
   options.suffixContent = lib.mkOption {
     type = wlib.types.wrapperFlags 3;
     default = [ ];
     description = ''
+      ```nix
       [
         [ "ENV" "SEP" "FILE" ]
       ]
+      ```
 
       Suffix ENV with SEP and then the contents of FILE at build time.
 
-      Values may contain environment variable references using `$` to expand at runtime
+      Also accepts sets like the other options
+
+      ```nix
+      [
+        [ "ENV" "SEP" "FILE" ]
+        { data = [ "ENV" "SEP" "FILE" ]; esc-fn = lib.escapeShellArg; /* name, before, after */ }
+      ]
+      ```
     '';
   };
   options.flags = lib.mkOption {
