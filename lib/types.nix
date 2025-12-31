@@ -255,4 +255,83 @@ in
           ) defs
         );
     };
+
+  /**
+    Exactly like `lib.types.submoduleWith` but for wrapper modules!
+
+    Use this when you want your wrapper module to be able to accept other programs along with custom configurations.
+
+    It takes all the same arguments as `lib.types.submoduleWith`.
+
+    ```nix
+    wlib.types.subWrapperModuleWith {
+      modules ? [],
+      specialArgs ? {},
+      shorthandOnlyDefinesConfig ? false,
+      description ? null,
+      class ? null
+    }
+    ```
+
+    The resulting `config.optionname` value will contain `.config` from the evaluated wrapper module, just like `lib.types.submoduleWith`
+
+    In other words, it will contain the same thing calling `.apply` returns.
+
+    This means you may grab the wrapped package from `config.optionname.wrapper`
+  */
+  subWrapperModuleWith =
+    {
+      modules ? [ ],
+      specialArgs ? { },
+      ...
+    }@submoduleArgs:
+    let
+      base = lib.types.submoduleWith (
+        {
+          modules = [
+            ./core.nix
+          ]
+          ++ modules;
+          specialArgs = specialArgs // {
+            inherit wlib;
+          };
+        }
+        // builtins.removeAttrs submoduleArgs [
+          "modules"
+          "specialArgs"
+        ]
+      );
+    in
+    base
+    // {
+      merge = {
+        __functor =
+          self: loc: defs:
+          (self.v2 { inherit loc defs; }).value;
+        v2 =
+          { loc, defs }:
+          let
+            initial = base.merge.v2 {
+              inherit loc defs;
+            };
+            configuration =
+              let
+                res = initial.valueMeta.configuration.extendModules {
+                  modules = [
+                    {
+                      _file = ./core.nix;
+                      __extend = lib.mkOverride 0 (lib.mkOrder 0 res.extendModules);
+                    }
+                  ];
+                };
+              in
+              res;
+          in
+          initial
+          // {
+            valueMeta = { inherit configuration; };
+            value = configuration.config;
+          };
+      };
+    };
 }
