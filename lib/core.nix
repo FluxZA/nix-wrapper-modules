@@ -181,8 +181,6 @@ in
       type =
         let
           inherit (lib.types)
-            functionTo
-            attrsOf
             either
             raw
             enum
@@ -207,7 +205,7 @@ in
                 ];
               }
             )
-              (either (attrsOf raw) (functionTo (attrsOf raw)));
+              raw;
         in
         base
         // {
