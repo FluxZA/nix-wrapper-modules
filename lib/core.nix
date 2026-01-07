@@ -183,10 +183,12 @@ in
               dag = config.overrides;
             }
           );
-      type = lib.types.package;
+      type = lib.types.addCheck wlib.types.stringable (
+        v: if builtins.isString v then wlib.types.nonEmptyline.check v else true
+      );
       description = ''
         The base package to wrap.
-        This means `config.symlinkScript` will be responsible
+        This means `config.builderFunction` will be responsible
         for inheriting all other files from this package
         (like man page, /share, ...)
 
@@ -322,39 +324,51 @@ in
         use `config.passthru`, or `config.outputs` instead.
 
         Also cannot override `buildCommand`.
-        That is controlled by the `config.symlinkScript`
+        That is controlled by the `config.builderFunction`
         and `config.sourceStdenv` options.
       '';
     };
     binName = lib.mkOption {
-      type = lib.types.str;
-      default = baseNameOf (lib.getExe config.package);
+      type = wlib.types.nonEmptyline;
+      default = baseNameOf (
+        builtins.addErrorContext ''
+          `config.package`: ${config.package} is not a derivation.
+          You must specify `config.binName` manually.
+        '' (lib.getExe config.package)
+      );
       description = ''
         The name of the binary output by `wrapperFunction` to `$out/bin`
 
         If not specified, the default name from the package will be used.
-
-        If set as an empty string, `symlinkScript` or `wrapperFunction` may behave unpredictably, depending on its implementation.
       '';
     };
     exePath = lib.mkOption {
-      type = lib.types.str;
-      default = lib.removePrefix "/" (lib.removePrefix "${config.package}" (lib.getExe config.package));
+      type = wlib.types.nonEmptyline;
+      default = lib.removePrefix "/" (
+        lib.removePrefix "${config.package}" (
+          builtins.addErrorContext ''
+            `config.package`: ${config.package} is not a derivation.
+            You must specify `config.exePath` manually.
+          '' (lib.getExe config.package)
+        )
+      );
       description = ''
         The relative path to the executable to wrap. i.e. `bin/exename`
 
         If not specified, the path gained from calling `lib.getExe` on `config.package` and subtracting the path to the package will be used.
-
-        If set as an empty string, `symlinkScript` or `wrapperFunction` may behave unpredictably, depending on its implementation.
       '';
     };
-    outputs = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = config.package.outputs or [ "out" ];
+    outputs = lib.mkOption rec {
+      type =
+        let
+          base = lib.types.addCheck (lib.types.listOf lib.types.str) (v: builtins.length v > 0);
+        in
+        base // { description = "non-empty " + base.description or "listOf str"; };
+      default = if type.check config.package.outputs then config.package.outputs else [ "out" ];
       description = ''
         Override the list of nix outputs that get symlinked into the final package.
 
-        Default is the value of `config.package.outputs or [ "out" ]`
+        Default is config.package.outputs or `[ "out" ]` if invalid.
       '';
     };
     wrapperFunction = lib.mkOption {
@@ -375,14 +389,14 @@ in
         }
         ```
 
-        The result of this function is passed DIRECTLY to the value of the `symlinkScript` function.
+        The result of this function is passed DIRECTLY to the value of the `builderFunction` function.
 
         The relative path to the thing to wrap from within `config.package` is `config.exePath`
 
         You should wrap the package and place the wrapper at `"$out/bin/''${config.binName}"`
       '';
     };
-    symlinkScript = lib.mkOption {
+    builderFunction = lib.mkOption {
       type = lib.types.functionTo (
         lib.types.either lib.types.str (lib.types.functionTo (lib.types.attrsOf lib.types.raw))
       );
@@ -401,27 +415,68 @@ in
           config,
           wrapper,
           ... # <- anything you can get from pkgs.callPackage
-        }:
+        }@initialArgs:
+        "<buildCommand>"
         ```
-
-        The function is to return a string which will be added to the buildCommand of the wrapper.
 
         It is in charge of linking `wrapper` and `config.outputs` to the final package.
 
         `wrapper` is the unchecked result of calling `wrapperFunction`, or null if one was not provided.
 
+        - The function is to return a string which will be added to the buildCommand of the wrapper.
+
         The builtin implementation, and also the `wlib.modules.symlinkScript` module,
         accept either a string to prepend to the returned `buildCommand` string,
         or a derivation to link with lndir
 
-        Alternatively, it may return a function.
+        - Alternatively, it may return a function which returns a set like:
 
-        If it returns a function, that function will be given the final computed derivation attributes,
+        ```nix
+        { wlib, config, wrapper, ... }@initialArgs:
+        drvArgs:
+        drvArgs // {}
+        ```
+
+        If it does this, that function will be given the final computed derivation attributes,
         and it will be expected to return the final attribute set to be passed to `pkgs.stdenv.mkDerivation`.
 
         Regardless of if you return a string or function,
-        `passthru.wrap`, `passthru.apply`, `passthru.eval`, `passthru.override`,
-        `passthru.overrideAttrs`, and `config.sourceStdenv` will be handled for you.
+        `passthru.wrap`, `passthru.apply`, `passthru.eval`, `passthru.extendModules`, `passthru.override`,
+        `passthru.overrideAttrs` will be added to the thing you return, and `config.sourceStdenv` will be handled for you.
+
+        However:
+
+        - You can also return a _functor_ with a (required) `mkDerivation` field.
+
+        ```nix
+          { config, stdenv, wrapper, wlib, ... }@initialArgs:
+          {
+            inherit (stdenv) mkDerivation;
+            __functor = {
+              mkDerivation,
+              __functor,
+              defaultPhases # [ "<all stdenv phases>" ... ]
+              setupPhases # phases: "if [ -z \"''${phases[*]:-}\" ]; then phases="etc..."; fi"
+              runPhases # "for curPhase in ''${phases[*]}; do runPhase \"$curPhase\"; done"
+            }@self:
+            defaultArgs:
+            defaultArgs // (if config.sourceStdenv then { } else { buildCommand = ""; }
+          }
+        ```
+
+        - If you do this:
+          - You are in control over the entire derivation.
+          - This means you need to take care of `config.passthru` and `config.sourceStdenv` yourself.
+          - The `mkDerivation` function will be called with the final result of your functor.
+
+        As you can see, you are provided with some things to help you via the `self` argument to your functor.
+
+        The generated `passthru` items mentioned above are given to you as part of what is shown as defaultArgs above
+
+        And you are also given some helpers to help you run the phases if needed!
+
+        Tip: A _functor_ is a set with a `{ __functor = self: args: ...; }` field.
+        You can call it like a function and it gets passed itself as its first argument!
       '';
       default =
         {
@@ -460,14 +515,195 @@ in
       type = lib.types.bool;
       default = true;
       description = ''
-        Whether to call `$stdenv/setup` to set up the environment before the symlinkScript
-
-        If any phases are enabled, also runs the enabled phases after the `config.symlinkScript` command has ran.
+        Run the enabled stdenv phases on the wrapper derivation.
 
         NOTE: often you may prefer to use things like `drv.doDist = true;`,
         or even `drv.phases = [ ... "buildPhase" etc ... ];` instead,
         to override this choice in a more fine-grained manner
       '';
+    };
+    wrapper = lib.mkOption {
+      type = lib.types.package;
+      readOnly = true;
+      description = ''
+        The final wrapped package.
+
+        You may still call `.eval` and the rest on the package again afterwards.
+
+        Accessing this value without defining `pkgs` option,
+        either directly, or via some other means like `.wrap`,
+        will cause an error.
+      '';
+      default =
+        let
+          inherit (config)
+            pkgs
+            package
+            binName
+            ;
+          meta = (package.meta or { }) // { mainProgram = binName; } // (config.drv.meta or { });
+          version =
+            package.version or meta.version or package.revision or meta.revision or package.rev or meta.rev
+              or package.release or meta.release or package.releaseDate or meta.releaseDate or "master";
+          defaultargs = {
+            passthru = config.passthru // {
+              configuration = config;
+              inherit (config)
+                wrap
+                eval
+                apply
+                extendModules
+                ;
+              override =
+                overrideArgs:
+                config.wrap {
+                  _file = wlib.core;
+                  overrides = lib.mkOverride (options.overrides.highestPrio or lib.modules.defaultOverridePriority) [
+                    {
+                      type = "override";
+                      data = overrideArgs;
+                    }
+                  ];
+                };
+              overrideAttrs =
+                overrideArgs:
+                config.wrap {
+                  _file = wlib.core;
+                  overrides = lib.mkOverride (options.overrides.highestPrio or lib.modules.defaultOverridePriority) [
+                    {
+                      type = "overrideAttrs";
+                      data = overrideArgs;
+                    }
+                  ];
+                };
+            };
+            dontUnpack = true;
+            dontConfigure = true;
+            dontPatch = true;
+            dontFixup = true;
+            name = package.name or "${package.pname or binName}-${version}";
+            pname = package.pname or binName;
+            inherit version meta;
+            inherit (config) outputs;
+            buildPhase = ''
+              runHook preBuild
+              runHook postBuild
+            '';
+            installPhase = ''
+              runHook preInstall
+              runHook postInstall
+            '';
+          }
+          // builtins.removeAttrs config.drv [
+            "passthru"
+            "buildCommand"
+            "outputs"
+            "meta"
+          ];
+          errormsg = "config.builderFunction function must return (a string) or (a function that recieves attrset and returns an attrset) or (a functor as described in https://birdeehub.github.io/nix-wrapper-modules/core.html#builderfunction)";
+          defaultPhases = [
+            "unpackPhase"
+            "patchPhase"
+            "configurePhase"
+            "buildPhase"
+            "checkPhase"
+            "installPhase"
+            "fixupPhase"
+            "installCheckPhase"
+            "distPhase"
+          ];
+          setupPhases =
+            phases:
+            let
+              capitalize =
+                s:
+                let
+                  first = builtins.substring 0 1 s;
+                  rest = builtins.substring 1 (builtins.stringLength s - 1) s;
+                in
+                lib.strings.toUpper first + rest;
+            in
+            if builtins.isList phases then
+              (lib.pipe phases [
+                (builtins.concatMap (n: [
+                  ''''${pre${capitalize n}s[*]:-}''
+                  "${n}"
+                ]))
+                (v: if builtins.length v > 0 then builtins.tail v else [ ])
+                (v: [ ''''${prePhases[*]:-}'' ] ++ v ++ [ ''''${postPhases[*]:-}'' ])
+                (builtins.concatStringsSep " ")
+                wlib.escapeShellArgWithEnv
+                (v: "\n" + ''if [ -z "''${phases[*]:-}" ]; then phases=${v}; fi'' + "\n")
+              ])
+            else
+              ''
+
+                if [ -z "''${phases[*]:-}" ]; then
+                    phases="''${prePhases[*]:-} unpackPhase patchPhase ''${preConfigurePhases[*]:-} \
+                        configurePhase ''${preBuildPhases[*]:-} buildPhase checkPhase \
+                        ''${preInstallPhases[*]:-} installPhase ''${preFixupPhases[*]:-} fixupPhase installCheckPhase \
+                        ''${preDistPhases[*]:-} distPhase ''${postPhases[*]:-}";
+                fi
+              '';
+          runPhases = ''
+
+            for curPhase in ''${phases[*]}; do
+                runPhase "$curPhase"
+            done
+          '';
+          initial = pkgs.callPackage config.builderFunction (
+            args
+            // {
+              wrapper =
+                if config.wrapperFunction == null then null else pkgs.callPackage config.wrapperFunction args;
+            }
+          );
+        in
+        (initial.mkDerivation or pkgs.stdenv.mkDerivation) (
+          if lib.isFunction initial then
+            lib.pipe initial [
+              (
+                v:
+                if v ? mkDerivation then
+                  v
+                  // {
+                    inherit runPhases setupPhases defaultPhases;
+                    configuration = config;
+                  }
+                else
+                  v
+              )
+              (f: f defaultargs)
+              (
+                v:
+                if initial ? mkDerivation then
+                  v
+                else if builtins.isAttrs v then
+                  v
+                  // {
+                    passthru = v.passthru or { } // defaultargs.passthru;
+                    passAsFile = [ "buildCommand" ] ++ v.passAsFile or [ ];
+                    buildCommand =
+                      lib.optionalString config.sourceStdenv (setupPhases defaultPhases)
+                      + v.buildCommand or ""
+                      + lib.optionalString config.sourceStdenv runPhases;
+                  }
+                else
+                  throw errormsg
+              )
+            ]
+          else if builtins.isString initial then
+            defaultargs
+            // {
+              passAsFile = [ "buildCommand" ] ++ defaultargs.passAsFile or [ ];
+              buildCommand =
+                lib.optionalString config.sourceStdenv (setupPhases defaultPhases)
+                + initial
+                + lib.optionalString config.sourceStdenv runPhases;
+            }
+          else
+            throw errormsg
+        );
     };
     wrap = lib.mkOption {
       type = lib.types.functionTo lib.types.package;
@@ -521,136 +757,22 @@ in
         This may prove useful when dealing with subWrapperModules or packages, which otherwise would not have access to some of them.
       '';
     };
-    wrapper = lib.mkOption {
-      type = lib.types.package;
-      readOnly = true;
-      description = ''
-        The final wrapped package.
-
-        You may still call `.eval` and the rest on the package again afterwards.
-
-        Accessing this value without defining `pkgs` option,
-        either directly, or via some other means like `.wrap`,
-        will cause an error.
-      '';
-      default =
-        let
-          passthru = config.passthru // {
-            configuration = config;
-          };
-          inherit (passthru.configuration)
-            pkgs
-            package
-            binName
-            outputs
-            ;
-          meta = (package.meta or { }) // {
-            mainProgram = binName;
-          };
-          version =
-            package.version or meta.version or package.revision or meta.revision or package.rev or meta.rev
-              or package.release or meta.release or package.releaseDate or meta.releaseDate or "master";
-          drvargs = {
-            passthru = passthru;
-            dontUnpack = true;
-            dontConfigure = true;
-            dontPatch = true;
-            dontFixup = true;
-            name = package.name or "${package.pname or binName}-${version}";
-            pname = package.pname or binName;
-            inherit version outputs meta;
-            buildPhase = ''
-              runHook preBuild
-              runHook postBuild
-            '';
-            installPhase = ''
-              runHook preInstall
-              runHook postInstall
-            '';
-          }
-          // builtins.removeAttrs passthru.configuration.drv [
-            "passthru"
-            "buildCommand"
-            "outputs"
-          ];
-          symres =
-            let
-              initial = pkgs.callPackage passthru.configuration.symlinkScript (
-                args
-                // {
-                  config = passthru.configuration;
-                  wrapper =
-                    if passthru.configuration.wrapperFunction == null then
-                      null
-                    else
-                      pkgs.callPackage passthru.configuration.wrapperFunction (
-                        args // { config = passthru.configuration; }
-                      );
-                }
-              );
-              errormsg = "config.symlinkScript function must return (a string) or (a function that recieves attrset and returns an attrset)";
-            in
-            if lib.isFunction initial then
-              let
-                res = (initial (builtins.removeAttrs drvargs [ "buildCommand" ]));
-              in
-              if builtins.isAttrs res then res else throw errormsg
-            else if builtins.isString initial then
-              initial
-            else
-              throw errormsg;
-        in
-        pkgs.stdenv.mkDerivation (
-          (if builtins.isString symres then drvargs else symres)
-          // {
-            passthru = (if builtins.isString symres then drvargs.passthru else symres.passthru or { }) // {
-              wrap = passthru.configuration.wrap;
-              apply = passthru.configuration.apply;
-              eval = passthru.configuration.eval;
-              override =
-                overrideArgs:
-                passthru.configuration.wrap {
-                  _file = ./core.nix;
-                  overrides = lib.mkOverride (options.overrides.highestPrio or lib.modules.defaultOverridePriority) [
-                    {
-                      type = "override";
-                      data = overrideArgs;
-                    }
-                  ];
-                };
-              overrideAttrs =
-                overrideArgs:
-                passthru.configuration.wrap {
-                  _file = ./core.nix;
-                  overrides = lib.mkOverride (options.overrides.highestPrio or lib.modules.defaultOverridePriority) [
-                    {
-                      type = "overrideAttrs";
-                      data = overrideArgs;
-                    }
-                  ];
-                };
-            };
-            buildCommand =
-              lib.optionalString passthru.configuration.sourceStdenv ''
-                source $stdenv/setup
-
-                if [ -z "''${phases[*]:-}" ]; then
-                    phases="''${prePhases[*]:-} unpackPhase patchPhase ''${preConfigurePhases[*]:-} \
-                        configurePhase ''${preBuildPhases[*]:-} buildPhase checkPhase \
-                        ''${preInstallPhases[*]:-} installPhase ''${preFixupPhases[*]:-} fixupPhase installCheckPhase \
-                        ''${preDistPhases[*]:-} distPhase ''${postPhases[*]:-}";
-                fi
-
-              ''
-              + (if builtins.isString symres then symres else symres.buildCommand or "")
-              + lib.optionalString passthru.configuration.sourceStdenv ''
-
-                for curPhase in ''${phases[*]}; do
-                    runPhase "$curPhase"
-                done
-              '';
-          }
-        );
+    symlinkScript = lib.mkOption {
+      type = lib.types.nullOr (
+        lib.types.functionTo (
+          lib.types.either lib.types.str (lib.types.functionTo (lib.types.attrsOf lib.types.raw))
+        )
+      );
+      internal = true;
+      default = null;
+      description = "DEPRECATED";
     };
   };
+  config.builderFunction = lib.mkIf (config.symlinkScript != null) (
+    lib.warn ''
+      Renamed option in wrapper module for ${config.binName}!
+      `config.symlinkScript` -> `config.builderFunction`
+      Please update all usages of the option to the new name.
+    '' config.symlinkScript
+  );
 }

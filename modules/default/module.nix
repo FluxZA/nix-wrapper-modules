@@ -29,7 +29,7 @@
 
     ## `wlib.modules.symlinkScript`
 
-    Adds extra options compared to the default `symlinkScript` option value.
+    Adds extra options compared to the default `builderFunction` option value.
 
     ---
   '';

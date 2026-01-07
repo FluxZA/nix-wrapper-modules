@@ -16,11 +16,14 @@ in
     modules
     checks
     maintainers
+    modulesPath
     ;
 
   types = import ./types.nix { inherit lib wlib modulesPath; };
 
   dag = import ./dag.nix { inherit lib wlib; };
+
+  core = ./core.nix;
 
   /**
     calls `nixpkgs.lib.evalModules` with the core module imported and `wlib` added to `specialArgs`
@@ -33,7 +36,7 @@ in
       evalArgs
       // {
         modules = [
-          ./core.nix
+          wlib.core
         ]
         ++ (evalArgs.modules or [ ]);
         specialArgs = {

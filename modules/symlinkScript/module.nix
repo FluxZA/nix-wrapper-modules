@@ -33,7 +33,7 @@
   config.drv.nativeBuildInputs = lib.mkIf ((config.filesToPatch or [ ]) != [ ]) [
     pkgs.replace
   ];
-  config.symlinkScript = lib.mkDefault (
+  config.builderFunction = lib.mkDefault (
     {
       config,
       wlib,
@@ -139,7 +139,7 @@
   );
   config.meta.maintainers = lib.mkDefault [ wlib.maintainers.birdee ];
   config.meta.description = lib.mkDefault ''
-    Adds extra options compared to the default `symlinkScript` option value.
+    Adds extra options compared to the default `builderFunction` option value.
 
     Imported by `wlib.modules.default`
 

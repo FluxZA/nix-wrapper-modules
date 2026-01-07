@@ -8,7 +8,7 @@ They are always imported with every module evaluation.
 
 They are very minimal by design.
 
-The default `symlinkScript` value provides no options.
+The default `builderFunction` value provides no options.
 
 The default `wrapperFunction` is null.
 

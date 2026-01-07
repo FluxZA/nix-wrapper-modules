@@ -108,6 +108,19 @@
   };
 
   /**
+    A single-line, non-empty string
+  */
+  nonEmptyline = lib.mkOptionType {
+    name = "nonEmptyline";
+    description = "non-empty line";
+    descriptionClass = "noun";
+    check =
+      x:
+      lib.types.str.check x && builtins.match "[ \t\n]*" x == null && builtins.match "[^\n\r]*" != null;
+    inherit (lib.types.str) merge;
+  };
+
+  /**
     Arguments:
     - `length`: `int`,
     - `elemType`: `type`
@@ -314,7 +327,7 @@
       base = lib.types.submoduleWith (
         args
         // {
-          modules = [ ./core.nix ] ++ modules;
+          modules = [ wlib.core ] ++ modules;
           specialArgs = {
             inherit modulesPath;
           }
