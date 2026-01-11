@@ -3,7 +3,7 @@
   self,
 }:
 let
-  waybarWrapped = self.wrapperModules.waybar.wrap {
+  waybarWrapped = self.wrappedModules.waybar.wrap {
     inherit pkgs;
 
     settings = {
@@ -17,7 +17,7 @@ let
   };
 
 in
-if builtins.elem pkgs.stdenv.hostPlatform.system self.wrapperModules.mako.meta.platforms then
+if builtins.elem pkgs.stdenv.hostPlatform.system self.wrappedModules.mako.meta.platforms then
   pkgs.runCommand "waybar-test" { } ''
     "${waybarWrapped}/bin/waybar" --version | grep -q "${waybarWrapped.version}"
     touch $out
