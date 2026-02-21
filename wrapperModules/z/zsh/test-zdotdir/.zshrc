@@ -1,1 +1,2 @@
-alias testZdot="echo Test Success"
+alias testZshrc="echo Zdot rc"
+alias testZdotrc="echo Zdot rc"
